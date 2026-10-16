@@ -1,75 +1,94 @@
-import logging
 import os
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import Message
+import asyncio
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
+# Siz bergan bot tokeni
 TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 
-logging.basicConfig(level=logging.INFO)
-dp = Dispatcher()
 bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
-def download_media(url: str, download_type: str = "video"):
-    ydl_opts = {
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
-        'format': 'bestaudio/best' if download_type == 'audio' else 'bestvideo+bestaudio/best',
-    }
+# Foydalanuvchining oxirgi yuborgan havolasini saqlash uchun lug'at
+user_links = {}
+
+def download_media(url, download_type='video'):
+    os.makedirs('downloads', exist_ok=True)
     
     if download_type == 'audio':
-        ydl_opts['postprocessors'] = [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }]
-
+        ydl_opts = {
+            'format': 'bestaudio',
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
+            'noplaylist': True,
+        }
+    else:
+        ydl_opts = {
+            'format': 'best[ext=mp4]/best',
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
+            'noplaylist': True,
+        }
+        
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
-        if download_type == 'audio':
-            filename = os.path.splitext(filename)[0] + ".mp3"
-        return filename, info.get('title', 'Media')
+        return filename
 
-@dp.message(Command("start"))
-async def start_command(message: Message):
+# Havola yuborilganda ishlaydi
+@dp.message(F.text.startswith("http"))
+async def link_handler(message: Message):
+    url = message.text.strip()
+    user_links[message.from_user.id] = url
+    
+    # Video yoki Audio tanlash uchun tugmalar
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🎬 Video yuklab olish", callback_data="dl_video"),
+            InlineKeyboardButton(text="🎵 Musiqa (Audio) yuklab olish", callback_data="dl_audio")
+        ]
+    ])
+    
     await message.answer(
-        "Assalomu alaykum! 👋\n\n"
-        "Menga YouTube, TikTok, Instagram, Snapchat yoki Likee havolalarini yuboring, "
-        "men sizga videoni yuklab beraman!"
+        "🔗 **Havola qabul qilindi!**\n\nQaysi formatda yuklab olishni xohlaysiz?",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
     )
 
-@dp.message()
-async def handle_url(message: Message):
-    url = message.text.strip()
-    supported_domains = ["youtube.com", "youtu.be", "tiktok.com", "instagram.com", "snapchat.com", "likee.video"]
-    
-    if not any(domain in url for domain in supported_domains):
-        await message.answer("Iltimos, qo'llab-quvvatlanadigan tarmoqlardan birining havolasini yuboring!")
+# Tugmalar bosilganda ishlaydi
+@dp.callback_query(F.data.in_({"dl_video", "dl_audio"}))
+async def callback_handler(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if user_id not in user_links:
+        await callback.answer("❌ Havola topilmadi yoki eskirgan. Iltimos, havolani qaytadan yuboring.", show_alert=True)
         return
-
-    processing_msg = await message.answer("⏳ Media yuklab olinmoqda, biroz kuting...")
-
-    try:
-        file_path, title = download_media(url, download_type="video")
-        file = types.FSInputFile(file_path)
-        await message.answer_video(video=file, caption=f"📥 {title}")
         
+    url = user_links[user_id]
+    download_type = 'audio' if callback.data == "dl_audio" else 'video'
+    
+    await callback.message.edit_text("⏳ **Yuklab olinmoqda, iltimos kuting...**", parse_mode="Markdown")
+    
+    try:
+        loop = asyncio.get_running_loop()
+        file_path = await loop.run_in_executor(None, download_media, url, download_type)
+        
+        await callback.message.edit_text("📤 **Telegramga yuborilmoqda...**", parse_mode="Markdown")
+        
+        file = FSInputFile(file_path)
+        if download_type == 'audio':
+            await callback.message.answer_audio(file)
+        else:
+            await callback.message.answer_video(file)
+            
+        # Faylni serverdan o'chirib tashlaymiz
         os.remove(file_path)
-        await bot.delete_message(chat_id=message.chat.id, message_id=processing_msg.message_id)
+        await callback.message.delete()
         
     except Exception as e:
-        await message.answer(f"❌ Xatolik yuz berdi: {str(e)}")
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=processing_msg.message_id)
-        except:
-            pass
+        await callback.message.edit_text(f"❌ **Xatolik yuz berdi:**\n{e}", parse_mode="Markdown")
 
 async def main():
-    if not os.path.exists("downloads"):
-        os.makedirs("downloads")
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
-    import asyncio
+if __name__ == '__main__':
     asyncio.run(main())
