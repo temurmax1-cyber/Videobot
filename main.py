@@ -12,7 +12,7 @@ TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# SQLite ma'lumotlar bazasini sozlash (ma'lumotlar o'chib ketishining oldini oladi)
+# SQLite ma'lumotlar bazasini sozlash
 def init_db():
     conn = sqlite3.connect('urls.db')
     cursor = conn.cursor()
@@ -35,13 +35,33 @@ def get_url(h):
     conn.close()
     return row[0] if row else None
 
-def get_media_info(url):
-    ydl_opts = {
+# yt-dlp uchun universal sozlamalarni hosil qilish funksiyasi
+def get_ydl_opts(download_type='video', download=False):
+    opts = {
         'noplaylist': True,
         'geo_bypass': True,
         'nocheckcertificate': True,
-        'cookiefile': 'cookies.txt', # YouTube cheklovlarini chetlab o'tish uchun
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+        'socket_timeout': 30,
+        'quiet': True,
     }
+    
+    # Agar cookies.txt fayli mavjud bo'lsa, uni avtomatik qo'shamiz
+    if os.path.exists('cookies.txt'):
+        opts['cookiefile'] = 'cookies.txt'
+        
+    if download_type == 'audio':
+        opts.update({'format': 'bestaudio/best'})
+    else:
+        opts.update({'format': 'best'})
+        
+    if download:
+        opts.update({'outtmpl': 'downloads/%(id)s.%(ext)s'})
+        
+    return opts
+
+def get_media_info(url):
+    ydl_opts = get_ydl_opts(download=False)
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         if 'entries' in info:
@@ -50,18 +70,7 @@ def get_media_info(url):
 
 def download_media(url, download_type='video'):
     os.makedirs('downloads', exist_ok=True)
-    ydl_opts = {
-        'noplaylist': True,
-        'geo_bypass': True,
-        'nocheckcertificate': True,
-        'cookiefile': 'cookies.txt', # YouTube cheklovlarini chetlab o'tish uchun
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
-    }
-    
-    if download_type == 'audio':
-        ydl_opts.update({'format': 'bestaudio/best'})
-    else:
-        ydl_opts.update({'format': 'best'})
+    ydl_opts = get_ydl_opts(download_type=download_type, download=True)
         
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
@@ -73,23 +82,20 @@ def download_media(url, download_type='video'):
 @dp.message(F.text.startswith("http"))
 async def link_handler(message: Message):
     url = message.text.strip()
-    status_msg = await message.answer("🔍 **Ma'lumot tekshirilmoqda...**", parse_mode="Markdown")
+    status_msg = await message.answer("🔍 **Havola tekshirilmoqda...**", parse_mode="Markdown")
     
     try:
         loop = asyncio.get_running_loop()
         info = await loop.run_in_executor(None, get_media_info, url)
         
         ext = info.get('ext', '')
-        # Agar post rasm bo'lsa, to'g'ridan-to'g'ri tashlab beramiz
+        # Agar post rasm bo'lsa
         if ext in ['jpg', 'jpeg', 'png', 'webp'] or (info.get('vcodec') == 'none' and ext in ['jpg', 'jpeg', 'png', 'webp']):
             await status_msg.edit_text("⏳ **Rasm yuklab olinmoqda...**", parse_mode="Markdown")
             file_path = await loop.run_in_executor(None, download_media, url, 'photo')
             
             bot_info = await bot.get_me()
-            caption = (
-                f"🤖 Bot nomi: {bot_info.first_name} (@{bot_info.username})\n"
-                f"📌 Universal Media Yuklovchi Bot"
-            )
+            caption = f"🤖 Bot: @{bot_info.username}\n📌 Universal Media Yuklovchi"
             
             file = FSInputFile(file_path)
             await message.answer_photo(file, caption=caption)
@@ -99,7 +105,7 @@ async def link_handler(message: Message):
             await status_msg.delete()
             return
             
-        # Agar video bo'lsa, bazaga saqlaymiz va tugma chiqaramiz
+        # Agar video bo'lsa, tugmalarni chiqaramiz
         h = hashlib.md5(url.encode()).hexdigest()[:8]
         save_url(h, url)
         
@@ -111,7 +117,7 @@ async def link_handler(message: Message):
         ])
         
         await status_msg.edit_text(
-            "🔗 **Havola qabul qilindi!**\n\nQaysi formatda yuklab olishni xohlaysiz?",
+            "🔗 **Havola muvaffaqiyatli qabul qilindi!**\n\nQaysi formatda yuklab olishni xohlaysiz?",
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
@@ -127,7 +133,7 @@ async def callback_handler(callback: CallbackQuery):
     
     url = get_url(h)
     if not url:
-        await callback.answer("❌ Havola topilmadi. Iltimos, havolani qaytadan yuboring.", show_alert=True)
+        await callback.answer("❌ Havola topilmadi yoki eskirgan. Iltimos, havolani qaytadan yuboring.", show_alert=True)
         return
         
     await callback.message.edit_text("⏳ **Yuklab olinmoqda, iltimos kuting...**", parse_mode="Markdown")
@@ -139,10 +145,7 @@ async def callback_handler(callback: CallbackQuery):
         await callback.message.edit_text("📤 **Telegramga yuborilmoqda...**", parse_mode="Markdown")
         
         bot_info = await bot.get_me()
-        caption = (
-            f"🤖 Bot nomi: {bot_info.first_name} (@{bot_info.username})\n"
-            f"📌 Universal Media Yuklovchi Bot"
-        )
+        caption = f"🤖 Bot: @{bot_info.username}\n📌 Universal Media Yuklovchi"
         
         file = FSInputFile(file_path)
         if download_type == 'audio':
@@ -155,9 +158,9 @@ async def callback_handler(callback: CallbackQuery):
         await callback.message.delete()
         
     except Exception as e:
-        await callback.message.edit_text(f"❌ **Xatolik yuz berdi:**\n{e}", parse_mode="Markdown")
+        await callback.message.edit_text(f"❌ **Yuklab olishda xatolik:**\n{e}", parse_mode="Markdown")
 
-# Render uxlab qolmasligi uchun veb-server
+# Render 24/7 ishlab turishi uchun web-server
 async def handle_ping(request):
     return web.Response(text="Bot is active and running 24/7!")
 
