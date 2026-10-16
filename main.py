@@ -12,7 +12,7 @@ TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# SQLite ma'lumotlar bazasini sozlash
+# 1. SQLite Ma'lumotlar bazasini sozlash
 def init_db():
     conn = sqlite3.connect('urls.db')
     cursor = conn.cursor()
@@ -35,7 +35,7 @@ def get_url(h):
     conn.close()
     return row[0] if row else None
 
-# yt-dlp uchun universal sozlamalarni hosil qilish funksiyasi
+# 2. yt-dlp sozlamalari (Render uchun ffmpeg talab qilmaydigan format bilan)
 def get_ydl_opts(download_type='video', download=False):
     opts = {
         'noplaylist': True,
@@ -46,14 +46,15 @@ def get_ydl_opts(download_type='video', download=False):
         'quiet': True,
     }
     
-    # Agar cookies.txt fayli mavjud bo'lsa, uni avtomatik qo'shamiz
+    # Agar cookies.txt mavjud bo'lsa, YouTube cheklovlarini chetlab o'tish uchun qo'shamiz
     if os.path.exists('cookies.txt'):
         opts['cookiefile'] = 'cookies.txt'
         
     if download_type == 'audio':
         opts.update({'format': 'bestaudio/best'})
     else:
-        opts.update({'format': 'best'})
+        # Render serverida ffmpeg yo'qligi sababli tayyor bitta mp4 fayl formatini tanlaymiz
+        opts.update({'format': 'best[ext=mp4]/best'})
         
     if download:
         opts.update({'outtmpl': 'downloads/%(id)s.%(ext)s'})
@@ -79,6 +80,7 @@ def download_media(url, download_type='video'):
         filename = ydl.prepare_filename(info)
         return filename
 
+# 3. Xabarlarni qabul qilish va qayta ishlash
 @dp.message(F.text.startswith("http"))
 async def link_handler(message: Message):
     url = message.text.strip()
@@ -89,7 +91,7 @@ async def link_handler(message: Message):
         info = await loop.run_in_executor(None, get_media_info, url)
         
         ext = info.get('ext', '')
-        # Agar post rasm bo'lsa
+        # Rasm yoki postlar uchun
         if ext in ['jpg', 'jpeg', 'png', 'webp'] or (info.get('vcodec') == 'none' and ext in ['jpg', 'jpeg', 'png', 'webp']):
             await status_msg.edit_text("⏳ **Rasm yuklab olinmoqda...**", parse_mode="Markdown")
             file_path = await loop.run_in_executor(None, download_media, url, 'photo')
@@ -105,7 +107,7 @@ async def link_handler(message: Message):
             await status_msg.delete()
             return
             
-        # Agar video bo'lsa, tugmalarni chiqaramiz
+        # Video va boshqa media havolalari uchun
         h = hashlib.md5(url.encode()).hexdigest()[:8]
         save_url(h, url)
         
@@ -160,7 +162,7 @@ async def callback_handler(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ **Yuklab olishda xatolik:**\n{e}", parse_mode="Markdown")
 
-# Render 24/7 ishlab turishi uchun web-server
+# 4. Render 24/7 ishlab turishi uchun web-server
 async def handle_ping(request):
     return web.Response(text="Bot is active and running 24/7!")
 
