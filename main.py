@@ -4,43 +4,46 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
-# Siz bergan bot tokeni
 TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Foydalanuvchining oxirgi yuborgan havolasini saqlash uchun lug'at
 user_links = {}
 
 def download_media(url, download_type='video'):
     os.makedirs('downloads', exist_ok=True)
     
+    # YouTube cheklovlarini chetlab o'tish uchun qo'shimcha sozlamalar
+    ydl_opts = {
+        'noplaylist': True,
+        'geo_bypass': True,
+        'nocheckcertificate': True,
+        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+    }
+    
     if download_type == 'audio':
-        ydl_opts = {
-            'format': 'bestaudio',
-            'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'noplaylist': True,
-        }
+        ydl_opts.update({
+            'format': 'bestaudio/best',
+        })
     else:
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            'outtmpl': 'downloads/%(id)s.%(ext)s',
-            'noplaylist': True,
-        }
+        ydl_opts.update({
+            'format': 'best[ext=mp4]/best/bestvideo+bestaudio',
+        })
         
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
         return filename
 
-# Havola yuborilganda ishlaydi
 @dp.message(F.text.startswith("http"))
 async def link_handler(message: Message):
     url = message.text.strip()
     user_links[message.from_user.id] = url
     
-    # Video yoki Audio tanlash uchun tugmalar
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🎬 Video yuklab olish", callback_data="dl_video"),
@@ -54,7 +57,6 @@ async def link_handler(message: Message):
         parse_mode="Markdown"
     )
 
-# Tugmalar bosilganda ishlaydi
 @dp.callback_query(F.data.in_({"dl_video", "dl_audio"}))
 async def callback_handler(callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -79,7 +81,6 @@ async def callback_handler(callback: CallbackQuery):
         else:
             await callback.message.answer_video(file)
             
-        # Faylni serverdan o'chirib tashlaymiz
         os.remove(file_path)
         await callback.message.delete()
         
