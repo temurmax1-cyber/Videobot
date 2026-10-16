@@ -1,6 +1,7 @@
 import os
 import asyncio
 import hashlib
+import sqlite3
 from aiohttp import web
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
@@ -11,7 +12,28 @@ TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-url_cache = {}
+# SQLite ma'lumotlar bazasini sozlash (ma'lumotlar o'chib ketishining oldini oladi)
+def init_db():
+    conn = sqlite3.connect('urls.db')
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS links (hash TEXT PRIMARY KEY, url TEXT)''')
+    conn.commit()
+    conn.close()
+
+def save_url(h, url):
+    conn = sqlite3.connect('urls.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR REPLACE INTO links (hash, url) VALUES (?, ?)', (h, url))
+    conn.commit()
+    conn.close()
+
+def get_url(h):
+    conn = sqlite3.connect('urls.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT url FROM links WHERE hash = ?', (h,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
 
 def get_media_info(url):
     ydl_opts = {
@@ -56,7 +78,7 @@ async def link_handler(message: Message):
         info = await loop.run_in_executor(None, get_media_info, url)
         
         ext = info.get('ext', '')
-        # Agar post rasm bo'lsa, to'g'ridan-to'g'ri yuklab yuboramiz
+        # Agar rasm bo'lsa, to'g'ridan-to'g'ri tashlab beramiz
         if ext in ['jpg', 'jpeg', 'png', 'webp'] or (info.get('vcodec') == 'none' and ext in ['jpg', 'jpeg', 'png', 'webp']):
             await status_msg.edit_text("⏳ **Rasm yuklab olinmoqda...**", parse_mode="Markdown")
             file_path = await loop.run_in_executor(None, download_media, url, 'photo')
@@ -75,9 +97,9 @@ async def link_handler(message: Message):
             await status_msg.delete()
             return
             
-        # Agar video bo'lsa, tugmalarni chiqaramiz
+        # Agar video bo'lsa, bazaga saqlaymiz va tugma chiqaramiz
         h = hashlib.md5(url.encode()).hexdigest()[:8]
-        url_cache[h] = url
+        save_url(h, url)
         
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -101,11 +123,11 @@ async def callback_handler(callback: CallbackQuery):
     download_type = data_parts[0]
     h = data_parts[1]
     
-    if h not in url_cache:
-        await callback.answer("❌ Havola eskirgan yoki topilmadi. Iltimos, havolani qaytadan yuboring.", show_alert=True)
+    url = get_url(h)
+    if not url:
+        await callback.answer("❌ Havola topilmadi. Iltimos, havolani qaytadan yuboring.", show_alert=True)
         return
         
-    url = url_cache[h]
     await callback.message.edit_text("⏳ **Yuklab olinmoqda, iltimos kuting...**", parse_mode="Markdown")
     
     try:
@@ -133,7 +155,6 @@ async def callback_handler(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ **Xatolik yuz berdi:**\n{e}", parse_mode="Markdown")
 
-# Render uxlab qolmasligi uchun veb-server
 async def handle_ping(request):
     return web.Response(text="Bot is active and running 24/7!")
 
@@ -147,7 +168,7 @@ async def start_web_server():
     await site.start()
 
 async def main():
-    # Veb-server va botni bir vaqtda ishga tushiramiz
+    init_db()
     await start_web_server()
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
