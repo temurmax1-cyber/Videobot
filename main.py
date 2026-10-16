@@ -14,14 +14,16 @@ user_links = {}
 def download_media(url, download_type='video'):
     os.makedirs('downloads', exist_ok=True)
     
-    # YouTube cheklovlarini chetlab o'tish uchun qo'shimcha sozlamalar
+    # YouTube blokirovkasini chetlab o'tish uchun player_client sozlamasi
     ydl_opts = {
         'noplaylist': True,
         'geo_bypass': True,
         'nocheckcertificate': True,
         'outtmpl': 'downloads/%(id)s.%(ext)s',
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
         }
     }
     
