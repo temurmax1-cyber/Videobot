@@ -40,6 +40,7 @@ def get_media_info(url):
         'noplaylist': True,
         'geo_bypass': True,
         'nocheckcertificate': True,
+        'cookiefile': 'cookies.txt', # YouTube cheklovlarini chetlab o'tish uchun
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -53,6 +54,7 @@ def download_media(url, download_type='video'):
         'noplaylist': True,
         'geo_bypass': True,
         'nocheckcertificate': True,
+        'cookiefile': 'cookies.txt', # YouTube cheklovlarini chetlab o'tish uchun
         'outtmpl': 'downloads/%(id)s.%(ext)s',
     }
     
@@ -78,7 +80,7 @@ async def link_handler(message: Message):
         info = await loop.run_in_executor(None, get_media_info, url)
         
         ext = info.get('ext', '')
-        # Agar rasm bo'lsa, to'g'ridan-to'g'ri tashlab beramiz
+        # Agar post rasm bo'lsa, to'g'ridan-to'g'ri tashlab beramiz
         if ext in ['jpg', 'jpeg', 'png', 'webp'] or (info.get('vcodec') == 'none' and ext in ['jpg', 'jpeg', 'png', 'webp']):
             await status_msg.edit_text("⏳ **Rasm yuklab olinmoqda...**", parse_mode="Markdown")
             file_path = await loop.run_in_executor(None, download_media, url, 'photo')
@@ -86,7 +88,7 @@ async def link_handler(message: Message):
             bot_info = await bot.get_me()
             caption = (
                 f"🤖 Bot nomi: {bot_info.first_name} (@{bot_info.username})\n"
-                f"📌 Instagram va tiktokdan video, audio Yuklovchi bot"
+                f"📌 Universal Media Yuklovchi Bot"
             )
             
             file = FSInputFile(file_path)
@@ -139,7 +141,7 @@ async def callback_handler(callback: CallbackQuery):
         bot_info = await bot.get_me()
         caption = (
             f"🤖 Bot nomi: {bot_info.first_name} (@{bot_info.username})\n"
-            f"📌 Instagram va tiktokdan video, audio Yuklovchi bot"
+            f"📌 Universal Media Yuklovchi Bot"
         )
         
         file = FSInputFile(file_path)
@@ -155,6 +157,7 @@ async def callback_handler(callback: CallbackQuery):
     except Exception as e:
         await callback.message.edit_text(f"❌ **Xatolik yuz berdi:**\n{e}", parse_mode="Markdown")
 
+# Render uxlab qolmasligi uchun veb-server
 async def handle_ping(request):
     return web.Response(text="Bot is active and running 24/7!")
 
