@@ -33,9 +33,8 @@ async def cmd_start(message: types.Message):
     await message.answer(
         "Assalomu alaykum! 🎵\n\n"
         "Men media va musiqa yordamchisi botiman:\n"
-        "• **Instagram, TikTok, YouTube** havolalarini yuborsangiz — videoni yuklab beraman.\n"
-        "• **Musiqa nomini yozsangiz** — o‘sha qo‘shiqni topib, MP3 ko‘rinishida tashlab beraman.\n"
-        "• **Musiqiy video yoki audio** yuborsangiz — uni qabul qilib, kerakli ishlovni bajaraman!"
+        "• **Instagram, TikTok** havolalarini yuborsangiz — videoni yuklab beraman.\n"
+        "• **Musiqa nomini yozsangiz** — YouTube'dan topib, audio ko'rinishida tashlab beraman."
     )
 
 # 2. Havolalar yoki Musiqa nomini matn ko'rinishida qabul qilish
@@ -49,23 +48,19 @@ async def handle_text(message: types.Message):
         if not text.startswith("http"):
             query = f"ytsearch1:{text}"
             ydl_opts = {
-                'format': 'bestaudio/best',
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
+                'format': 'bestaudio/bestaudio',
                 'outtmpl': 'downloads/%(id)s.%(ext)s',
                 'noplaylist': True,
             }
+            search_target = query
         else:
-            # Havola bo'lsa (Instagram, TikTok, YouTube va h.k.)
+            search_target = text
             ydl_opts = {
                 'format': 'best[ext=mp4]/best',
                 'outtmpl': 'downloads/%(id)s.%(ext)s',
                 'noplaylist': True,
             }
-            # Agar YouTube bo'lsa va cookies mavjud bo'lsa
+            # Agar YouTube havolasi bo'lsa va cookies mavjud bo'lsa
             if "youtube.com" in text or "youtu.be" in text:
                 if os.path.exists("cookies.txt"):
                     ydl_opts['cookiefile'] = 'cookies.txt'
@@ -73,15 +68,11 @@ async def handle_text(message: types.Message):
         os.makedirs("downloads", exist_ok=True)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(text, download=True)
+            info = ydl.extract_info(search_target, download=True)
             if 'entries' in info:
                 info = info['entries'][0]
             
             filename = ydl.prepare_filename(info)
-            
-            # Agar musiqa (audio) qidirilgan bo'lsa, fayl kengaytmasi mp3 ga o'zgaradi
-            if not text.startswith("http"):
-                filename = os.path.splitext(filename)[0] + ".mp3"
 
         if os.path.exists(filename):
             file_size = os.path.getsize(filename) / (1024 * 1024) # MB da
@@ -104,15 +95,6 @@ async def handle_text(message: types.Message):
     except Exception as e:
         logging.error(f"Xatolik: {e}")
         await msg.edit_text(f"❌ Xatolik yuz berdi: {str(e)}")
-
-# 3. Foydalanuvchi musiqa parchasi yoki video yuborganda uni qabul qilish
-@dp.message(F.audio | F.video | F.document)
-async def handle_media_files(message: types.Message):
-    await message.answer(
-        "📥 Faylingiz qabul qilindi! "
-        "Agar bu musiqali video yoki audio bo'lsa, uni tahlil qilish yoki qayta ishlash jarayoni hozircha qo'shimcha API'larni talab qiladi. "
-        "Lekin siz uning nomini yozib yuborsangiz, darhol topib berishim mumkin!"
-    )
 
 # Asosiy ishga tushirish funksiyasi
 async def main():
