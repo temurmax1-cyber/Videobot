@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import sqlite3
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -15,8 +16,38 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Foydalanuvchining oxirgi yuborgan havolasini saqlash uchun lug'at
+# Foydalanuvchining oxirgi yuborgan havolasini saqlash uchun
 user_links = {}
+
+# --- BAZA BILAN ISHLASH QISMI ---
+def db_start():
+    conn = sqlite3.connect('bot_users.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            full_name TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def add_user(user_id, username, full_name):
+    conn = sqlite3.connect('bot_users.db')
+    cursor = conn.cursor()
+    cursor.execute('INSERT OR IGNORE INTO users (user_id, username, full_name) VALUES (?, ?, ?)', (user_id, username, full_name))
+    conn.commit()
+    conn.close()
+
+def get_user_count():
+    conn = sqlite3.connect('bot_users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM users')
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+# --------------------------------
 
 # Render uchun oddiy web-server (UptimeRobot 24/7 ishlashi uchun)
 async def handle(request):
@@ -30,9 +61,12 @@ async def start_web_server():
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
 
-# 1. /start komandasi
+# 1. /start komandasi va foydalanuvchini bazaga qo'shish
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
+    user = message.from_user
+    add_user(user.id, user.username, user.full_name)
+
     await message.answer(
         "Assalomu alaykum! 🎵\n\n"
         "Men media va musiqa yordamchisi botiman:\n"
@@ -40,9 +74,18 @@ async def cmd_start(message: types.Message):
         "• Videolar ostidagi tugma orqali uning **audiosini** ham alohida yuklab olishingiz mumkin."
     )
 
-# 2. Havolalarni qabul qilish
+# 2. Statistika komandasi (Faqat siz ko'ra olasiz)
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    count = get_user_count()
+    await message.answer(f"📊 **Bot statistikasi:**\n\n👥 Jami foydalanuvchilar soni: **{count}** ta")
+
+# 3. Havolalarni qabul qilish
 @dp.message(F.text & ~F.text.startswith("/"))
 async def handle_text(message: types.Message):
+    user = message.from_user
+    add_user(user.id, user.username, user.full_name) # Har qanday xatoda ham bazaga qo'shib boradi
+
     text = message.text.strip()
     msg = await message.answer("🔍 Qidirilmoqda va yuklab olinmoqda, iltimos kuting...")
 
@@ -73,8 +116,7 @@ async def handle_text(message: types.Message):
                 os.remove(filename)
                 return
 
-            # Foydalanuvchi uchun havolani saqlab qo'yamiz (audio tugmasi ishlashi uchun)
-            user_links[message.from_user.id] = text
+            user_links[user.id] = text
 
             input_file = FSInputFile(filename)
             caption = (
@@ -83,7 +125,6 @@ async def handle_text(message: types.Message):
                 "🤖 Bot manzili: @Yukla100_bot"
             )
 
-            # Audio yuklab olish uchun tugma
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🎵 Audio yuklab olish", callback_data="download_audio")]
             ])
@@ -99,7 +140,7 @@ async def handle_text(message: types.Message):
         logging.error(f"Xatolik: {e}")
         await msg.edit_text(f"❌ Xatolik yuz berdi: {str(e)}")
 
-# 3. Audio yuklab olish tugmasi bosilganda ishlaydigan qism
+# 4. Audio yuklab olish tugmasi
 @dp.callback_query(F.data == "download_audio")
 async def callback_download_audio(callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -121,6 +162,8 @@ async def callback_download_audio(callback: CallbackQuery):
                 ydl_opts['cookiefile'] = 'cookies.txt'
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(link, download=info=True if False else ydl_opts) # xatolik bo'lmasligi uchun
+            # to'g'ri chaqiruv:
             info = ydl.extract_info(link, download=True)
             if 'entries' in info:
                 info = info['entries'][0]
@@ -146,13 +189,12 @@ async def callback_download_audio(callback: CallbackQuery):
 
 # Asosiy ishga tushirish funksiyasi
 async def main():
+    db_start() # Bazani ishga tushiramiz
+    
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
     
-    # Web serverni fonda ishga tushiramiz (Render uchun)
     asyncio.create_task(start_web_server())
-    
-    # Botni ishga tushiramiz
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
