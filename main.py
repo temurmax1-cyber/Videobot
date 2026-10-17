@@ -34,7 +34,7 @@ async def cmd_start(message: types.Message):
         "Assalomu alaykum! 🎵\n\n"
         "Men media va musiqa yordamchisi botiman:\n"
         "• **Instagram, TikTok** havolalarini yuborsangiz — videoni yuklab beraman.\n"
-        "• **Musiqa nomini yozsangiz** — YouTube'dan topib, audio ko'rinishida tashlab beraman."
+        "• **Musiqa nomini yozsangiz** — SoundCloud'dan topib, audio ko'rinishida tashlab beraman."
     )
 
 # 2. Havolalar yoki Musiqa nomini matn ko'rinishida qabul qilish
@@ -44,23 +44,22 @@ async def handle_text(message: types.Message):
     msg = await message.answer("🔍 Qidirilmoqda va yuklab olinmoqda, iltimos kuting...")
 
     try:
-        # Asosiy yt_dlp sozlamalari
         ydl_opts = {
             'noplaylist': True,
             'outtmpl': 'downloads/%(id)s.%(ext)s',
         }
 
-        # Render IP cheklovini chetlab o'tish uchun cookies.txt ni ham qidiruvga, ham havolaga ulaymiz
-        if os.path.exists("cookies.txt"):
-            ydl_opts['cookiefile'] = 'cookies.txt'
-
-        # Agar matn havola bo'lmasa, uni musiqa nomi deb tushunib YouTube'dan qidiramiz
+        # Agar matn havola bo'lmasa, uni musiqa nomi deb tushunib SoundCloud'dan qidiramiz
         if not text.startswith("http"):
-            search_target = f"ytsearch1:{text}"
+            search_target = f"scsearch1:{text}"
             ydl_opts['format'] = 'bestaudio/bestaudio'
         else:
             search_target = text
             ydl_opts['format'] = 'best[ext=mp4]/best'
+            # Agar boshqa qo'llab-quvvatlanadigan havola bo'lsa
+            if "youtube.com" in text or "youtu.be" in text:
+                if os.path.exists("cookies.txt"):
+                    ydl_opts['cookiefile'] = 'cookies.txt'
 
         os.makedirs("downloads", exist_ok=True)
 
