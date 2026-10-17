@@ -7,8 +7,8 @@ from aiogram.types import FSInputFile
 from aiohttp import web
 import yt_dlp
 
-# Token va sozlamalar
-TOKEN = os.getenv("BOT_TOKEN", "SIZNING_BOT_TOKENINGIZ")
+# Siz taqdim etgan bot tokeni
+TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 PORT = int(os.getenv("PORT", 8080))
 
 logging.basicConfig(level=logging.INFO)
