@@ -7,7 +7,7 @@ from aiogram.types import FSInputFile
 from aiohttp import web
 import yt_dlp
 
-# Siz taqdim etgan bot tokeni
+# Sizning bot tokeningiz
 TOKEN = "8597649397:AAGsC_TfivNXmJwNPMFjmMgGGUOcybSA5FI"
 PORT = int(os.getenv("PORT", 8080))
 
@@ -44,26 +44,23 @@ async def handle_text(message: types.Message):
     msg = await message.answer("🔍 Qidirilmoqda va yuklab olinmoqda, iltimos kuting...")
 
     try:
+        # Asosiy yt_dlp sozlamalari
+        ydl_opts = {
+            'noplaylist': True,
+            'outtmpl': 'downloads/%(id)s.%(ext)s',
+        }
+
+        # Render IP cheklovini chetlab o'tish uchun cookies.txt ni ham qidiruvga, ham havolaga ulaymiz
+        if os.path.exists("cookies.txt"):
+            ydl_opts['cookiefile'] = 'cookies.txt'
+
         # Agar matn havola bo'lmasa, uni musiqa nomi deb tushunib YouTube'dan qidiramiz
         if not text.startswith("http"):
-            query = f"ytsearch1:{text}"
-            ydl_opts = {
-                'format': 'bestaudio/bestaudio',
-                'outtmpl': 'downloads/%(id)s.%(ext)s',
-                'noplaylist': True,
-            }
-            search_target = query
+            search_target = f"ytsearch1:{text}"
+            ydl_opts['format'] = 'bestaudio/bestaudio'
         else:
             search_target = text
-            ydl_opts = {
-                'format': 'best[ext=mp4]/best',
-                'outtmpl': 'downloads/%(id)s.%(ext)s',
-                'noplaylist': True,
-            }
-            # Agar YouTube havolasi bo'lsa va cookies mavjud bo'lsa
-            if "youtube.com" in text or "youtu.be" in text:
-                if os.path.exists("cookies.txt"):
-                    ydl_opts['cookiefile'] = 'cookies.txt'
+            ydl_opts['format'] = 'best[ext=mp4]/best'
 
         os.makedirs("downloads", exist_ok=True)
 
